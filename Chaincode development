@@ -1,0 +1,82 @@
+1. Handles the business logic of the network
+2. Runs in one of the peers isolated from endorsing peers 
+3. Chaincode can be invoked to update/query ledger
+4. Chaincode can invoke another chaincode with appropriate permission
+5. chaincode program must implement the Chaincode interface Go/Nodejs
+
+Go :  Package Shim
+Package shim provides APIs for the chaincode to access its state variables, transaction context and call other chaincodes
+
+Chaincode -> Smartcontract -> Businesslogic
+
+Imports shim Package (helps in communicating with underlying blockchain network)
+
+Main function 
+1. Starting point of any Go program hence used for bootsraping/starting chain code.
+2. When the peer deploy its instance of  chaincode, main function gets executes.
+    Example:
+        func main() {
+            err := shim.Start(new(SampleChaincode))
+            if err != nil {
+                fmt.Println("Could not start SampleChaincode")
+            } else {
+                fmt.Println("SampleChaincode successfully started")
+            }
+        }   
+   shim.Start(new(SampleChaincode)) line starts the chaincode and registers it with the peer
+   SampleChaincode is the struct that is required to implement the shim
+   Chaincode interface,which has three methods — Init, Query, and Invoke — for it to be considered a valid Chaincode type by the shim package. 
+3. Init method
+   It is called when the chaincode is first deployed onto the blockchain network and will be executed by each peer that deploys its own instance of the chaincode.
+Example:
+    func (t *SampleChaincode) Init(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte,
+    error) {
+    return nil, nil
+    }
+4.Query method
+    The Query method is invoked whenever any read/get/query operation needs to be performed on the blockchain state
+    Note :  Depending upon the complexity of the chaincode, this method can hold 
+    your read/get/query logic, or it could be outsourced to separate methods that can be invoked from
+    within the Query method.
+    Query method is not intended to change the state of the underlying blockchain.
+ Example:
+    func (t *SampleChaincode) Query(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte,
+    error) {
+    return nil, nil
+    }
+
+5. Invoke method
+   The Invoke method is invoked whenever the state of the blockchain is to be modified.
+   This method will modify the state of the blockchain, the blockchain Fabric code will automatically create a transaction context inside which this method will get executed.
+   func (t *SampleChaincode) Invoke(stub shim.ChaincodeStubInterface, function string, args []string) ([]byte,
+    error) {
+    return nil, nil
+    }
+6. Data Models
+    World state : key value store - powered by rockDB - takes byte array as the value ,which can be used to store JSON data.
+    Blockchain :  series of blocks each containing a number of transactions.
+    Marshal and unmarshal golang structs to JSON strings
+    stub.GetState
+    stub.PutState
+
+7.  Implementing access control and permissions
+    Membership services
+        Enrollment certificate : Certificate to a user that wants to transact on blockchain as a proof of identity.
+        Transaction certificate :  one-time token that is passed along each invocation request of the chaincode by the invoker/invoking application
+        Attributes :  Each transaction certificate can hold a number of user-defined attributes.
+    
+### Project insights 
+
+Healthcare
+    SSOT Health 
+
+Realtors
+    BlockR
+
+
+
+
+
+
+
+

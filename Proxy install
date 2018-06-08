@@ -1,0 +1,83 @@
+gedit /etc/apt/apt.conf
+
+Acquire::http::Proxy "http://diwakarm:Welcome%402020@172.16.13.13:8080";
+Acquire::https::Proxy "https://diwakarm:Welcome%402020@172.16.13.13:8080";
+
+------------------------------------------------------------------------------
+gedit /etc/bash.bashrc 
+
+export http_proxy=http://diwakarm:Welcome%402020@172.16.13.13:8080
+export https_proxy=https://diwakarm:Welcome%402020@172.16.13.13:8080
+export no_proxy=localhost,127.0.0.1
+
+-------------------------------------------------------------------------------
+gedit /etc/environment
+
+
+export http_proxy=http://diwakarm:Welcome%402020@172.16.13.13:8080
+export https_proxy=https://diwakarm:Welcome%402020@172.16.13.13:8080
+export no_proxy=localhost,127.0.0.1
+
+-------------------------------------------------------------------------------
+
+
+http://172.16.13.13:8080/
+------------------------------------------------------------------------------
+
+Install extension vs code
+
+code --install-extension PeterJausovec.vscode-docker
+code --install-extension ms-vscode.cpptools
+code --install-extension ms-python.python
+code --install-extension msjsdiag.debugger-for-chrome
+code --install-extension robertohuertasm.vscode-icons
+code --install-extension HyperledgerComposer.composer-support-client //Not installed connection refused
+code --install-extension JuanBlanco.solidity
+code --install-extension ms-vscode.js-atom-grammar
+code --install-extension ms-vscode.Go
+---------------------------------------------------------------------------------
+
+
+Issue
+
+Development only script for Hyperledger Fabric control
+Running 'downloadFabric.sh'
+FABRIC_VERSION is unset, assuming hlfv11
+FABRIC_START_TIMEOUT is unset, assuming 15 (seconds)
+Error response from daemon: Get https://registry-1.docker.io/v2/: dial tcp 52.54.216.153:443: getsockopt: connection refused
+
+above is the issue with the docker porxy,
+one set as said below it downloads as expected
+
+---------------------------------------------------------------------------------
+
+Docker Proxy 
+
+sudo mkdir -p /etc/systemd/system/docker.service.d
+gedit /etc/systemd/system/docker.service.d/http-proxy.conf
+Paste the following
+	[Service]
+	Environment="HTTP_PROXY=http://proxy.example.com:80/" "NO_PROXY=localhost,127.0.0.1"
+
+gedit /etc/systemd/system/docker.service.d/https-proxy.conf
+Paste the following
+	[Service]
+	Environment="HTTPS_PROXY=http://proxy.example.com:80/" "NO_PROXY=localhost,127.0.0.1"  
+
+-------------------------------------------------------------------------------------
+
+NPM proxy
+
+npm config set proxy http://diwakarm:Welcome%402020@172.16.13.13:8080
+npm config set https-proxy https://diwakarm:Welcome%402020@172.16.13.13:8080
+
+
+-------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+

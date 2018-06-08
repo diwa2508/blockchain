@@ -1,0 +1,257 @@
+----------------------------------------------------------
+CREATING HYPERLEDGER FABRIC NETWORK
+    A single orderer
+    Three peers (each part of separate organization)
+    A single channel
+    Example chaincode
+
+----------------------------------------------------------
+
+Nodes (Peers and Orderers) are permitted to access business networks using MSP(CA - Certificate Authority).
+
+Cryptogen is used generate required certificates (local MSP is used to store certs,viz is a local directory structure for each peer and orderer).
+
+Note : For production "fabric ca" toolset introducing full-featured certificate authorities to generate the certificates.
+
+Cyptogen uses YAML configuration file,based on which certificates are generated
+
+sample-crypto-config.yaml (1 orderer 1 Orgs):
+
+OrdererOrgs:
+  - Name: Orderer
+    Domain: acme.com
+    Specs:
+      - Hostname: orderer
+PeerOrgs:
+  - Name: Org1
+    Domain: org1.acme.com
+    Template:
+      Count: 1
+    Users:
+      Count: 1
+ 
+genrate certifacte using
+cryptogen generate --config=./sample-crypto-config.yaml
+which will create certificates in directory,this is the local MSP of the each peer and orderer
+
+Configtxgen
+Channel.tx and Genesis block are created using "configtxgen" tool
+
+based on the configtx.yaml a "channel.tx" is created, this channel is the location where the ledger exists and mechanism that lets peers join the business network
+
+Genesis block
+It bootstraps ordering services and hold channel configurations
+
+Anchor peer
+
+
+The configtx.yaml file is broken into several sections:
+	Profile: Profiles describe the organizational structure of your network.
+	Organizations: The details regarding individual organizations.
+	Orderer: The details regarding the Orderer parameters.	
+	Application:
+
+Sample cofigtx.yaml
+
+Profiles:
+    OrgsOrdererGenesis:
+        Orderer:
+            <<: *OrdererDefaults
+            Organizations:
+                - *OrdererOrg
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+                    - *Org1               
+    OrgsChannel:
+        Consortium: SampleConsortium
+        Application:
+            <<: *ApplicationDefaults
+            Organizations:
+                - *Org1                              
+Organizations:
+    - &OrdererOrg
+        Name: OrdererOrg
+        ID: OrdererMSP
+        MSPDir: crypto-config/ordererOrganizations/acme.com/msp
+    - &Org1
+        Name: Org1MSP
+        ID: Org1MSP
+        MSPDir: crypto-config/peerOrganizations/org1.acme.com/msp
+        AnchorPeers:
+            - Host: peer0.org1.acme.com
+              Port: 7051
+Orderer: &OrdererDefaults
+    OrdererType: solo
+    Addresses:
+        - orderer.acme.com:7050
+    BatchTimeout: 2s
+    BatchSize:
+        MaxMessageCount: 10
+        AbsoluteMaxBytes: 99 MB
+        PreferredMaxBytes: 512 KB
+    Kafka:
+        Brokers:
+            - 127.0.0.1:9092
+    Organizations:
+Application: &ApplicationDefaults
+    Organizations:
+
+Organizations are named exactly as named in the cryptogen tool and its .yaml file
+
+Creating Genesis Block
+
+export FABRIC_CFG_PATH=$PWD
+mkdir channel-artifacts
+configtxgen -profile OrgsOrdererGenesis -outputBlock ./channel-artifacts/genesis.block
+
+After creating the gensis block, channel has to cnfigured
+export CHANNEL_NAME= CHANNEL NAME
+configtxgen -profile OrgsChannel -outputCreateChannelTx ./channel-artifacts/channel.tx -channelID $CHANNEL_NAME
+
+Next operation is to provide definition for the anchor peers of our organization.
+(important if there are more peers belonging to a single organization)
+
+Command to define anchor peers for organization
+configtxgen -profile OrgsChannel -outputAnchorPeersUpdate ./channel-artifacts/Org1MSPanchors.tx -channelID $CHANNEL_NAME -asOrg Org1MSP
+(Note :  asOrg parameter refers to the MSP ID definitions in configtx.yaml)
+
+
+START THE HYPERLEDGER FABRIC BLOCKCHAIN NETWORK
+
+docker-compose is used to start the network.
+docker-compose tools uses yaml configuration files,where various aspects of the containers and their network connection are defined.
+
+To start,the docker-compose-cli.yaml file and base directory files are copied to working directory
+
+base directory contains the peer-base.yaml file which is extended by the docker-compose-cli.yaml file (serves a base configuration file for each peer) 
+	docker-compose-cli.yaml -> glues our orderer and peers together into one network and defines CLI container
+	peer-base.yaml -> extends docker-compose-cli.yaml 
+	docker-compose-base.yaml -> Defines over all topology
+
+
+
+START DOCKER CONTAINERS
+
+Done so far : Generated Certificates, the genesis block, the channel transactions.
+
+Network is started using following command:
+CHANNEL_NAME=$CHANNEL_NAME docker-compose -f docker-compose-cli.yaml up -d
+("docker ps" command lists the executing containers
+ "docker logs <container Id|name>" to view logs)
+ "docker rm -f $(docker ps -aq)" shutdown containers (but not the crypto artifacts created earlier)
+
+
+CHANNEL 
+Below command enters into CLI container once the docker has started
+docker exec -it cli bash
+with which we can interact with the other peers(Pointing to the certificates of the peers)
+
+Sample env variable needed as prefix to peer commands
+
+ORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.acme.com/users/Admin@org2.acme.com/msp
+CORE_PEER_ADDRESS=peer0.org2.acme.com:7051
+CORE_PEER_LOCALMSPID="Org2MSP"
+CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.acme.com/peers/peer0.org2.acme.com/tls/ca.crt
+
+CREATE CHANNEL
+
+command "peer create channel"  targets the orderer (where channels must be created) and uses channel.tx and the channel name that is created using the configtxgen tool.
+
+In the context of CLI container command line we define CHANNEL_NAME environment variable with our channel name.
+
+Example : 
+export CHANNEL_NAME=mychannel
+
+peer channel create -o orderer.acme.com:7050 -c $CHANNEL_NAME -f ./channel-artifacts/channel.tx --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/acme.com/orderers/orderer.acme.com/msp/tlscacerts/tlsca.acme.com-cert.pem
+
+The "peer channel create" command returns a genesis block(mychannel.block ) which will be used to join the channel.
+
+JOIN CHANNEL
+Peers are added to the channel using CLI commands
+"peer channel join -b mychannel.block"
+
+To make other pees join the channel we use thier respective variables for each peer
+example:
+CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.acme.com/users/Admin@org2.acme.com/msp CORE_PEER_ADDRESS=peer0.org2.acme.com:7051 CORE_PEER_LOCALMSPID="Org2MSP" CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.acme.com/peers/peer0.org2.acme.com/tls/ca.crt peer channel join -b mychannel.block
+
+Command to view the logs "docker logs <anchor peer identity>"
+
+Anchor peers can be update by following the above steps with "update" commnand
+
+INSTALLING CHAINCODE
+
+With the above steps we will have a fully configured and running Hyperledger Fabric Network.
+But the network does not contain any business logic ( can be considered as empty).
+
+Hyperledger fabric blockchain applications interact with the ledger through the chaincode.
+Chaincode is installed in a peer with the below command 
+example : 
+peer chaincode install -n mycc -v 1.0 -p github.com/chaincode/chaincode_example02/go/
+the same chaincode has to be installed in other peers as well
+Sample:
+CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.acme.com/users/Admin@org2.acme.com/msp CORE_PEER_ADDRESS=peer0.org2.acme.com:7051 CORE_PEER_LOCALMSPID="Org2MSP" CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.acme.com/peers/peer0.org2.acme.com/tls/ca.crt peer chaincode install -n mycc -v 1.0 -p github.com/chaincode/chaincode_example02/go/
+
+INSTANTIATE CHAINCODE
+
+Chaincode has to be initiated in the channel - the init function of chaincode will be called.
+Command to instantiate the chaincode from one of the peers
+Sample:
+peer chaincode instantiate -o orderer.acme.com:7050 --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/acme.com/orderers/orderer.acme.com/msp/tlscacerts/tlsca.acme.com-cert.pem -C $CHANNEL_NAME -n mycc -v 1.0 -c '{"Args":["init","a", "100", "b","200"]}' -P "OR ('Org1MSP.member','Org2MSP.member','Org3MSP.member')"
+
+This command causes the following actions to occur:
+	Spawns a chaincode Docker container to house the chaincode.
+	Invokes the init function of the chaincode.
+	Defines the endorsement policy for the channel [ -p "OR "]
+	
+
+EXECUTING THE CHAINCODE
+
+Query
+Sample command to query the ledger through a channel
+peer chaincode query -C $CHANNEL_NAME -n mycc -c '{"Args":["query","a"]}'
+
+
+SUMMARY
+
+At this point, network is fully operational.
+Summary of the tasks completed:
+    Retrieved Hyperledger Fabric v1.1 artificats and binaries.
+    Used the cryptogen tool to generate certificates and keys for the local MSP.
+    Used the configtxgen tool to create our channel transaction and genesis block.
+    Configured the docker-compose.yaml files to describe our networks and peers.
+    Used the CLI container to perform the following tasks:
+        Create the channel
+        Deploy chaincode
+        Initialize chaincode
+        Invoke chaincode
+        Query chaincode
+
+TO DO:
+To Use the fabric ca and fabric ca server to generate the certificates (instead of the cryptogen tool).
+Setup Hyperledger Fabric blockchain network on physical nodes across the network.
+Bulding client application on top of the network using fabric SDK
+
+
+
+Useful Docker Commands
+
+docker ps -a - Show all docker processes.
+
+docker-compose -f <your_docker_compose_file.yaml> up -d - Start docker containers that are described by docker-compose.yaml.
+
+docker rm -f $(docker ps -aq) - Shut down/remove all docker processes.
+
+docker network ls - Shows docker networks.
+
+docker logs <id|name> - Show the logs for a docker container. Logs are useful for debugging problems.
+
+docker exec -it <id|name> bash - Enter the docker container and start an interactive bash terminal.
+
+
+
+
+
+
+
+
